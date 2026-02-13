@@ -13,65 +13,90 @@ Séquence 1 : Codespace de Github
 Objectif : Création d'un Codespace Github  
 Difficulté : Très facile (~5 minutes)
 -------------------------------------------------------------------------------------------------------
-**Faites un Fork de ce projet**. Si besion, voici une vidéo d'accompagnement pour vous aider dans les "Forks" : [Forker ce projet](https://youtu.be/p33-7XQ29zQ) 
+**Faites un Fork de ce projet**. Si besoin, voici une vidéo d'accompagnement pour vous aider à "Forker" un Repository Github : [Forker ce projet](https://youtu.be/p33-7XQ29zQ) 
   
 Ensuite depuis l'onglet **[CODE]** de votre nouveau Repository, **ouvrez un Codespace Github**.
   
 ---------------------------------------------------
-Séquence 2 : Création du cluster Kubernetes K3d
+Séquence 2 : Création du votre environnement de travail
 ---------------------------------------------------
-Objectif : Créer votre cluster Kubernetes K3d  
-Difficulté : Simple (~5 minutes)
+Objectif : Créer votre environnement de travail  
+Difficulté : Simple (~10 minutes)
 ---------------------------------------------------
-Vous allez dans cette séquence mettre en place un cluster Kubernetes K3d contenant un master et 2 workers.  
-Dans le terminal de votre Codespace copier/coller les codes ci-dessous etape par étape :  
+Vous allez dans cette séquence mettre en place un cluster Kubernetes K3d contenant un master et 2 workers, installer les logiciels Packer et Ansible. Depuis le terminal de votre Codespace copier/coller les codes ci-dessous étape par étape :  
 
 **Création du cluster K3d**  
 ```
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 ```
 ```
-k3d cluster create lab \
+k3d cluster create pra \
   --servers 1 \
   --agents 2
 ```
-**vérification du cluster**  
+**vérification de la création de votre cluster Kubernetes**  
 ```
 kubectl get nodes
 ```
-**Déploiement d'une application (Docker Mario)**  
+**Installation du logiciel Packer (création d'images Docker)**  
 ```
-kubectl create deployment mario --image=sevenajay/mario
-kubectl expose deployment mario --type=NodePort --port=80
-kubectl get svc
+PACKER_VERSION=1.11.2
+curl -fsSL -o /tmp/packer.zip \
+  "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"
+sudo unzip -o /tmp/packer.zip -d /usr/local/bin
+rm -f /tmp/packer.zip
 ```
-**Forward du port 80**  
+**Installation du logiciel Ansible**  
 ```
-kubectl port-forward svc/mario 8080:80 >/tmp/mario.log 2>&1 &
+python3 -m pip install --user ansible kubernetes PyYAML jinja2
+export PATH="$HOME/.local/bin:$PATH"
+ansible-galaxy collection install kubernetes.core
 ```
-**Réccupération de l'URL de l'application Mario** 
-Votre application Mario est déployée sur le cluster K3d. Pour obtenir votre URL cliquez sur l'onglet **[PORTS]** dans votre Codespace et rendez public votre port **8080** (Visibilité du port).
-Ouvrez l'URL dans votre navigateur et jouer !
-
+  
 ---------------------------------------------------
-Séquence 3 : Exercice
+Séquence 3 : Déploiement de l'infrastructure
 ---------------------------------------------------
-Objectif : Customisez un image Docker avec Packer et déploiement sur K3d via Ansible
-Difficulté : Moyen/Difficile (~2h)
+Objectif : Déployer l'infrastructure sur le cluster Kubernetes
+Difficulté : Facile (~15 minutes)
 ---------------------------------------------------  
-Votre mission (si vous l'acceptez) : Créez une **image applicative customisée à l'aide de Packer** (Image de base Nginx embarquant le fichier index.html présent à la racine de ce Repository), puis déployer cette image customisée sur votre **cluster K3d** via **Ansible**, le tout toujours dans **GitHub Codespace**.  
+Nous allons à présent déployer notre infrastructure sur Kubernetes. C'est à dire, créér l'image Docker de notre application Flask avec Packer, déposer l'image dans le cluster Kubernetes et enfin déployer l'infratructure avec Ansible (Création du pod, création des PVC et les scripts des sauvegardes aututomatiques).  
 
- 
+**Création de l'image Docker avec Packer**  
+```
+packer init .
+packer build -var "image_tag=1.0" .
+docker images | head
+```
+  
+**Import de l'image Docker dans le cluster Kubernetes**  
+```
+k3d image import pra/flask-sqlite:1.0 -c pra
+```
+  
+**Déploiment de l'infrastructure dans Kubernetes**  
+```
+ansible-playbook ansible/playbook.yml
+```
+  
+**Forward du port 8080 qui est le port d'exposition de votre application Flask**  
+```
+kubectl -n pra port-forward svc/flask 8080:80 >/tmp/web.log 2>&1 &
+```
   
 ---------------------------------------------------  
-## Processus de travail (résumé)
+**Réccupération de l'URL de votre application Flask**. Votre application Flask est déployée sur le cluster K3d. Pour obtenir votre URL cliquez sur l'onglet **[PORTS]** dans votre Codespace (à coté de Terminal) et rendez public votre port 8080 (Visibilité du port). Ouvrez l'URL dans votre navigateur et c'est terminé.  
 
-1. Installation du cluster Kubernetes K3d (Séquence 1)
-2. Installation de Packer et Ansible
-3. Build de l'image customisée (Nginx + index.html)
-4. Import de l'image dans K3d
-5. Déploiement du service dans K3d via Ansible
-6. Ouverture des ports et vérification du fonctionnement
+**Les routes** à votre disposition sont les suivantes :  
+1. https://...**/** affichera dans votre navigateur "Bonjour tout le monde !".
+2. https://...**/health** pour voir l'état de santé de votre application.
+3. https://...**/add?message=test** pour ajouter un message dans votre base de données SQLite.
+4. https://...**/count** pour afficher le nombre de messages stockés dans votre base de données SQLite.
+5. https://...**/consultation** pour afficher les messages stockés dans votre base de données.
+  
+---------------------------------------------------  
+## Processus de sauvegarde de la BDD SQLite
+
+Grâce à une tâche CRON (déployé par Ansible sur le cluster Kubernetes), toutes les minutes une sauvegarde de la BDD SQLite est faite du PVC pra-data vers le PCV pra-backup dans Kubernetes.  
 
 ---------------------------------------------------
 Séquence 4 : Documentation  
