@@ -320,8 +320,7 @@ Le script enchaîne automatiquement :
 - Phase 3 : Redémarrage Flask + réactivation du CronJob
 
 3. Vérifier
-GET https://'ton-url'/count
-GET https://'ton-url'/consultation
+GET https://'ton-url'/count & GET https://'ton-url'/consultation
   
 ---------------------------------------------------
 Evaluation
