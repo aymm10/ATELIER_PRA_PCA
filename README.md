@@ -231,27 +231,54 @@ Faites preuve de pédagogie et soyez clair dans vos explications et procedures d
 **Exercice 1 :**  
 Quels sont les composants dont la perte entraîne une perte de données ?  
   
-*..Répondez à cet exercice ici..*
+Le seul composant dont la perte entraîne une perte de données est le PVC pra-data, à condition que le PVC pra-backup soit lui aussi perdu (ou que la dernière sauvegarde soit trop ancienne).
+
+Le Pod : Sa suppression est sans conséquence sur l'intégrité des données, celles-ci étant persistées dans le PVC pra-data. Kubernetes assure sa haute disponibilité par une recréation automatique (PCA).
+
+PVC pra-data (Volume de production) : Sa perte critique engendre une interruption de service et la perte des données actives, déclenchant ainsi la procédure de Plan de Reprise d'Activité (PRA).
+
+PVC pra-backup (Volume de sauvegarde) : En cas de perte simultanée avec le volume de production, toute possibilité de restauration est anéantie.
+
+CronJob sqlite-backup : Son absence interrompt le cycle des sauvegardes, ce qui dégrade directement le RPO (perte de données potentielles plus importante entre deux sauvegardes).
 
 **Exercice 2 :**  
 Expliquez nous pourquoi nous n'avons pas perdu les données lors de la supression du PVC pra-data  
   
-*..Répondez à cet exercice ici..*
+Nous n'avons pas perdu les données car la base de données SQLite n'est pas stockée à l'intérieur du conteneur, mais sur un volume persistant externe : le PVC pra-data.
+Quand Kubernetes détruit un pod, il supprime uniquement le conteneur (le processus). Le PVC, lui, est un objet Kubernetes indépendant qui survit à la vie du pod. Lorsque le Deployment recrée automatiquement un nouveau pod, celui-ci monte le même PVC pra-data et retrouve la base de données intacte.
+C'est précisément la différence entre le stockage éphémère (dans le conteneur) et le stockage persistant (dans un PVC) : le premier disparaît avec le pod, le second persiste.
 
 **Exercice 3 :**  
 Quels sont les RTO et RPO de cette solution ?  
   
-*..Répondez à cet exercice ici..*
+RPO (Recovery Point Objective)
+Le CronJob effectue une sauvegarde toutes les 1 minute. En cas de sinistre, on peut donc perdre au maximum 1 minute de données (les transactions réalisées entre la dernière sauvegarde et le crash).
+RTO (Recovery Time Objective)
+La procédure de restauration manuelle comprend plusieurs étapes : scale down du deployment, suppression du PVC, recréation de l'infrastructure (kubectl apply), lancement du job de restauration et relance du CronJob. Ce processus prend environ 5 à 10 minutes si l'opérateur est disponible et connaît la procédure.
 
 **Exercice 4 :**  
 Pourquoi cette solution (cet atelier) ne peux pas être utilisé dans un vrai environnement de production ? Que manque-t-il ?   
   
-*..Répondez à cet exercice ici..*
+Cette solution est un excellent environnement d'apprentissage, mais elle présente plusieurs limites critiques pour un usage en production :
+
+1. Pas de réplication géographique. Les deux PVCs (pra-data et pra-backup) sont stockés sur le même cluster, probablement sur le même node. Si la machine physique tombe en panne ou si le datacenter est sinistré, les deux volumes sont perdus simultanément.
+2. Pas de chiffrement des sauvegardes. Les fichiers SQLite sont copiés en clair. En production, les sauvegardes doivent être chiffrées au repos et en transit.
+3. Pas de surveillance ni d'alerting. Il n'y a aucun mécanisme pour détecter qu'une sauvegarde a échoué ou qu'un PVC est presque plein.
+4. La restauration est manuelle. Le RTO dépend entièrement de la disponibilité et de la réactivité d'un opérateur humain. Une vraie solution PRA devrait automatiser la détection du sinistre et le déclenchement de la restauration.
+5. SQLite n'est pas adapté à la production. SQLite est une base de données mono-fichier, non distribuée et non répliquée. En production, on utilise des bases comme PostgreSQL ou MySQL avec réplication native.
+6. Pas de rétention des sauvegardes. Le système ne conserve qu'un seul fichier de backup (ou une liste non gérée). Il n'y a pas de politique de rétention (ex : garder les 7 derniers jours).
   
 **Exercice 5 :**  
-Proposez une archtecture plus robuste.   
+Proposez une architecture plus robuste.   
   
-*..Répondez à cet exercice ici..*
+PostgreSQL en mode HA (via l'opérateur CloudNativePG ou Patroni) remplace SQLite, avec réplication synchrone entre un primary et un ou plusieurs replicas.
+Velero pour les sauvegardes Kubernetes : sauvegarde des PVCs, des objets Kubernetes et restauration automatisée, vers un stockage objet externe (S3, MinIO, Azure Blob...).
+Deux datacenters distincts (ou deux régions cloud) pour éviter le SPOF géographique.
+Un LoadBalancer / DNS failover (ex: Route53 ou un health-check DNS) pour basculer automatiquement le trafic vers le site secondaire.
+Monitoring & alerting avec Prometheus + Alertmanager pour détecter un sinistre et déclencher les procédures.
+Runbook automatisé (via ArgoCD ou un script CI/CD) pour réduire le RTO à quelques minutes, voire secondes.
+
+Avec cette architecture, on vise un RPO < 1 seconde (réplication synchrone) et un RTO < 5 minutes (basculement automatique).
 
 ---------------------------------------------------
 Séquence 6 : Ateliers  
