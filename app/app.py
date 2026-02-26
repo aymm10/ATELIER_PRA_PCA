@@ -2,7 +2,7 @@ import os
 import glob
 import time
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 
 DB_PATH = os.getenv("DB_PATH", "/data/app.db")
@@ -118,6 +118,45 @@ def status():
         count=event_count,
         last_backup_file=last_backup_file,
         backup_age_seconds=backup_age_seconds
+    )
+
+@app.get("/backups")
+def backups():
+    """
+    Liste tous les points de restauration disponibles dans /backup.
+    Retourne pour chaque fichier : son nom, le timestamp unix,
+    la date lisible et l'âge en secondes.
+    """
+    backup_files = sorted(
+        glob.glob(os.path.join(BACKUP_DIR, "*.db")),
+        reverse=True  # Du plus récent au plus ancien
+    )
+
+    result = []
+    now = time.time()
+
+    for filepath in backup_files:
+        filename = os.path.basename(filepath)
+        mtime = os.path.getmtime(filepath)
+
+        # Extraire le timestamp unix depuis le nom de fichier (app-<ts>.db)
+        try:
+            ts_unix = int(filename.replace("app-", "").replace(".db", ""))
+            ts_human = datetime.fromtimestamp(ts_unix, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        except ValueError:
+            ts_unix = int(mtime)
+            ts_human = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        result.append({
+            "filename":        filename,
+            "timestamp_unix":  ts_unix,
+            "datetime":        ts_human,
+            "age_seconds":     int(now - mtime)
+        })
+
+    return jsonify(
+        total=len(result),
+        backups=result
     )
 
 # ---------- Main ----------

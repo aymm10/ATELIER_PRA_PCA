@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sqlite-restore-point
+  namespace: pra
+spec:
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: restore
+          image: alpine
+          env:
+            - name: RESTORE_FILE
+              value: "app-XXXXXXXXXX.db"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "=== Démarrage de la restauration ==="
+
+              # Vérification que RESTORE_FILE est défini
+              if [ -z "$RESTORE_FILE" ]; then
+                echo " ERREUR : variable RESTORE_FILE non définie."
+                exit 1
+              fi
+
+              # Vérification que le fichier existe dans /backup
+              if [ ! -f "/backup/$RESTORE_FILE" ]; then
+                echo " ERREUR : fichier '$RESTORE_FILE' introuvable dans /backup"
+                echo "Fichiers disponibles :"
+                ls -lh /backup/
+                exit 1
+              fi
+
+              echo " Fichier trouvé : /backup/$RESTORE_FILE"
+              echo " Copie vers /data/app.db ..."
+              cp /backup/$RESTORE_FILE /data/app.db
+              echo " Restauration terminée avec succès."
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: backup
+              mountPath: /backup
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pra-data
+        - name: backup
+          persistentVolumeClaim:
+            claimName: pra-backup

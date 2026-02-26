@@ -296,7 +296,32 @@ Difficulté : Moyenne (~2 heures)
 ### **Atelier 2 : Choisir notre point de restauration**  
 Aujourd’hui nous restaurobs “le dernier backup”. Nous souhaitons **ajouter la capacité de choisir un point de restauration**.
 
-*..Décrir ici votre procédure de restauration (votre runbook)..*  
+Par défaut, la restauration utilisait toujours le dernier backup. Cet atelier ajoute la capacité de choisir un point de restauration précis parmi tous les backups du PVC pra-backup. Chaque backup est nommé app-<timestamp_unix>.db et généré toutes les minutes par le CronJob.
+
+Nouveaux fichiers :
+
+app/app.py — Nouvelle route GET /backups qui liste en JSON tous les points de restauration disponibles avec leur nom, date lisible et âge en secondes.
+pra/51-job-restore-point.yaml — Job Kubernetes paramétrable via la variable RESTORE_FILE.
+pra/restore.sh — Script bash qui orchestre toute la procédure en 3 phases.
+
+Procédure de restauration :
+
+1. Identifier le point de restauration
+./pra/restore.sh
+ou via l'API :
+GET https://<ton-url>/backups
+
+2. Lancer la restauration
+./pra/restore.sh app-1772096403.db
+
+Le script enchaîne automatiquement :
+- Phase 1 : Scale down Flask + suspension du CronJob
+- Phase 2 : Injection du fichier choisi dans le Job + copie vers `/data/app.db`
+- Phase 3 : Redémarrage Flask + réactivation du CronJob
+
+3. Vérifier
+GET https://<ton-url>/count
+GET https://<ton-url>/consultation
   
 ---------------------------------------------------
 Evaluation
