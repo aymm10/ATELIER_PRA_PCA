@@ -309,19 +309,19 @@ Procédure de restauration :
 1. Identifier le point de restauration
 ./pra/restore.sh
 ou via l'API :
-GET https://<ton-url>/backups
+GET https://'ton-url'/backups
 
 2. Lancer la restauration
-./pra/restore.sh app-1772096403.db
+./pra/restore.sh nom_fichier_.db
 
 Le script enchaîne automatiquement :
 - Phase 1 : Scale down Flask + suspension du CronJob
-- Phase 2 : Injection du fichier choisi dans le Job + copie vers `/data/app.db`
+- Phase 2 : Injection du fichier choisi dans le Job + copie vers /data/app.db
 - Phase 3 : Redémarrage Flask + réactivation du CronJob
 
 3. Vérifier
-GET https://<ton-url>/count
-GET https://<ton-url>/consultation
+GET https://'ton-url'/count
+GET https://'ton-url'/consultation
   
 ---------------------------------------------------
 Evaluation
